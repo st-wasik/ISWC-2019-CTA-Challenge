@@ -1,7 +1,9 @@
-# ISWC 2019 CTA Challenge
-## University Project
+#ISWC 2019 CTA Challenge
+##University Project
 
-### Env config
+###Env config
+
+- cabal sandbox init
  
 - cabal install --only-dependencies 
 
