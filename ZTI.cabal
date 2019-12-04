@@ -57,7 +57,7 @@ executable ZTI
   -- other-extensions:    
   
   -- Other library packages from which modules are imported.
-  build-depends:       base >=4.9 && <4.10, split, bytestring, sparql-protocol, http-client
+  build-depends:       base >=4.9 && <4.10, split, bytestring, sparql-protocol, http-client, pretty-simple
 
   
   -- Directories containing source files.
