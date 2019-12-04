@@ -4,7 +4,9 @@
 ###Env config
 
 - cabal sandbox init
- 
+
+- cabal update
+
 - cabal install --only-dependencies 
 
 - cabal build
