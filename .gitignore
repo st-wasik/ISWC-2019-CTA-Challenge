@@ -1,0 +1,6 @@
+data/
+dist/
+.stack-work/
+.cabal-sandbox/
+stack.yaml.lock
+
