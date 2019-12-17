@@ -50,32 +50,63 @@ baseLookupEndpoint = "http://lookup.dbpedia.org/api/search/KeywordSearch?MaxHits
 xmlTags :: [String]
 xmlTags = ["Classes", "Class", "Label", "URI", "Categories", "Category"]
 
-dropXmlTagsAndZip :: [String] -> [(String, String)]
-dropXmlTagsAndZip [] = []
-dropXmlTagsAndZip (a:_) = nubBy (\a b -> fst a == fst b) $ foldl (\acc a -> case a of; [a,b]-> ((a,b):acc); _->acc) [] $ chunksOf 2 $ filter (`notElem` xmlTags) $ filter (not . isPrefixOf "/") $ filter (not . null) $ concat $ fmap (splitOn ">") $ splitOn "<" a
+dropXmlTagsAndZipUnique :: [String] -> [(String, String)]
+dropXmlTagsAndZipUnique [] = []
+dropXmlTagsAndZipUnique (a:_) = 
+    nubBy (\a b -> fst a == fst b) 
+    . foldl (\acc a -> 
+        case a of
+            [a,b] -> ((a,b):acc)
+            _     -> acc) [] 
+    . chunksOf 2 
+    . filter (`notElem` xmlTags) 
+    . filter (not . isPrefixOf "/") 
+    . filter (not . null) 
+    . concat 
+    . fmap (splitOn ">") 
+    $ splitOn "<" a
 
 lookupForName :: String -> IO LookupResult
 lookupForName name = do
-    a <- (HTTP.simpleHTTP . HTTP.getRequest $ baseLookupEndpoint ++ name) >>= HTTP.getResponseBody 
+    res <- (HTTP.simpleHTTP . HTTP.getRequest $ baseLookupEndpoint ++ name) >>= HTTP.getResponseBody 
     let 
-        desc    = getDescriptionFromLookup a
-        classes = getClassesFromLookup a
-        categories = getCategoriesForLookup a
-    return $ LookupResult name desc classes categories 
+        description = getDescriptionFromLookup res
+        classes     = getClassesFromLookup res
+        categories  = getCategoriesForLookup res
+    return $ LookupResult name description classes categories 
         
 getClassesFromLookup :: String -> Classes
-getClassesFromLookup lookupData = dropXmlTagsAndZip $ take 1 $ dropWhile (\a -> not $ "<Classes>" `isPrefixOf` a) $ fmap trim $ lines lookupData
+getClassesFromLookup lookupData = 
+    dropXmlTagsAndZipUnique 
+    . take 1 
+    . dropWhile (\a -> not $ "<Classes>" `isPrefixOf` a)
+    . fmap trim 
+    $ lines lookupData
 
 getDescriptionFromLookup :: String -> Description
-getDescriptionFromLookup lookupData = dropTags $ take 1 $ dropWhile (\a -> not $ "<Description>" `isPrefixOf` a) $ fmap trim $ lines lookupData
+getDescriptionFromLookup lookupData = 
+    dropTags 
+    . take 1 
+    . dropWhile (\a -> not $ "<Description>" `isPrefixOf` a) 
+    . fmap trim 
+    $ lines lookupData
     where
         dropTags []    = [] 
         dropTags [str] = if length res /= 0 then head res else [] 
             where
-                res = filter (not . null) $ splitOn "</Description>" $ concat $ filter (not . null) $ splitOn "<Description>" $ trim str
+                res = filter (not . null) 
+                    . splitOn "</Description>" 
+                    . concat $ filter (not . null) 
+                    . splitOn "<Description>" 
+                    $ trim str
 
 getCategoriesForLookup :: String -> Categories
-getCategoriesForLookup lookupData = dropXmlTagsAndZip $ take 1 $ dropWhile (\a -> not $ "<Categories>" `isPrefixOf` a) $ fmap trim $ lines lookupData
+getCategoriesForLookup lookupData = 
+    dropXmlTagsAndZipUnique 
+    . take 1 
+    . dropWhile (\a -> not $ "<Categories>" `isPrefixOf` a) 
+    . fmap trim 
+    $ lines lookupData
 
 
 lookupElems :: [String] -> IO [LookupResult]
@@ -83,7 +114,15 @@ lookupElems [] = return []
 lookupElems (a:as) = (:) <$> lookupForName a <*> lookupElems as
 
 getFrequencyList :: [String] -> [(String, Int)]
-getFrequencyList list = sortBy (\(_,a) (_,b)->compare b a) $ fmap (\a-> let len = length a in if len/=0 then (head a, len) else ("", len)) $ group $ sort $ list
+getFrequencyList list = 
+    sortBy (\(_,a) (_,b)->compare b a) 
+    . fmap (\a-> 
+        let len = length a 
+        in if len/=0 
+            then (head a, len) 
+            else ("", len)) 
+    . group 
+    $ sort list
 
 prepareText :: String -> String
 prepareText = fmap toLower . filter (not . isPunctuation)
@@ -114,4 +153,3 @@ test = do
     putStrLn ""
     putStrLn $ (take 40 $ repeat '=') ++ "  CATEGORIES: " ++ (take 40 $ repeat '=')
     putStrLn . show $ take 10 $ getFrequencyList $ processCategories x
-
