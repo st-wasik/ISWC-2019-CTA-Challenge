@@ -12,6 +12,8 @@ import qualified Network.HTTP as HTTP
 import Data.List.Split
 import Data.List
 
+import Data.Char
+
 type SelectResult = SPARQL.SelectResult
 
 
@@ -50,7 +52,7 @@ xmlTags = ["Classes", "Class", "Label", "URI", "Categories", "Category"]
 
 dropXmlTagsAndZip :: [String] -> [(String, String)]
 dropXmlTagsAndZip [] = []
-dropXmlTagsAndZip (a:_) = foldl (\acc a -> case a of; [a,b]-> ((a,b):acc); _->acc) [] $ chunksOf 2 $ filter (`notElem` xmlTags) $ filter (not . isPrefixOf "/") $ filter (not . null) $ concat $ fmap (splitOn ">") $ splitOn "<" a
+dropXmlTagsAndZip (a:_) = nubBy (\a b -> fst a == fst b) $ foldl (\acc a -> case a of; [a,b]-> ((a,b):acc); _->acc) [] $ chunksOf 2 $ filter (`notElem` xmlTags) $ filter (not . isPrefixOf "/") $ filter (not . null) $ concat $ fmap (splitOn ">") $ splitOn "<" a
 
 lookupForName :: String -> IO LookupResult
 lookupForName name = do
@@ -68,7 +70,9 @@ getDescriptionFromLookup :: String -> Description
 getDescriptionFromLookup lookupData = dropTags $ take 1 $ dropWhile (\a -> not $ "<Description>" `isPrefixOf` a) $ fmap trim $ lines lookupData
     where
         dropTags []    = [] 
-        dropTags [str] = head $ filter (not . null) $ splitOn "</Description>" $ concat $ filter (not . null) $ splitOn "<Description>" $ trim str
+        dropTags [str] = if length res /= 0 then head res else [] 
+            where
+                res = filter (not . null) $ splitOn "</Description>" $ concat $ filter (not . null) $ splitOn "<Description>" $ trim str
 
 getCategoriesForLookup :: String -> Categories
 getCategoriesForLookup lookupData = dropXmlTagsAndZip $ take 1 $ dropWhile (\a -> not $ "<Categories>" `isPrefixOf` a) $ fmap trim $ lines lookupData
@@ -79,4 +83,35 @@ lookupElems [] = return []
 lookupElems (a:as) = (:) <$> lookupForName a <*> lookupElems as
 
 getFrequencyList :: [String] -> [(String, Int)]
-getFrequencyList list = sortBy (\(_,a) (_,b)->compare b a) $ fmap (\a-> (head a, length a)) $ group $ sort list
+getFrequencyList list = sortBy (\(_,a) (_,b)->compare b a) $ fmap (\a-> let len = length a in if len/=0 then (head a, len) else ("", len)) $ group $ sort $ list
+
+prepareText :: String -> String
+prepareText = fmap toLower . filter (not . isPunctuation)
+
+processDescriptions :: [LookupResult] -> [String]
+processDescriptions = foldl (\acc (LookupResult _ desc _ _) -> ((nub $ words $ prepareText desc) ++ acc)) [] 
+
+processClasses :: [LookupResult] -> [String]
+processClasses = foldl (\acc (LookupResult _ _ classes _) -> ((fmap fst classes) ++ acc)) [] 
+
+processCategories :: [LookupResult] -> [String]
+processCategories = foldl (\acc (LookupResult _ _ _ categories) -> ((fmap fst categories) ++ acc)) [] 
+
+
+removeStopWords :: [String] -> [String] -> [String]
+removeStopWords stopwords = foldl (\acc a -> if a `notElem` stopwords then (a:acc) else acc) []
+
+test = do
+    stopWords <- fmap words $ readFile "data/stopwords.txt"
+    testVals <- fmap words $ readFile "data/testVals.txt"
+    x <- lookupElems testVals
+    -- x <- lookupElems ["cat", "dog", "fish", "duck", "mouse", "chick", "pig", "cow"]
+    putStrLn $ (take 40 $ repeat '=') ++ " DESCRIPTION: "  ++ (take 40 $ repeat '=')
+    putStrLn . show $ take 10 $ getFrequencyList $ removeStopWords stopWords $ processDescriptions x
+    putStrLn ""
+    putStrLn $ (take 40 $ repeat '=') ++ "   CLASSES:   "  ++ (take 40 $ repeat '=')
+    putStrLn . show $ take 10 $ getFrequencyList $ processClasses x
+    putStrLn ""
+    putStrLn $ (take 40 $ repeat '=') ++ "  CATEGORIES: " ++ (take 40 $ repeat '=')
+    putStrLn . show $ take 10 $ getFrequencyList $ processCategories x
+
