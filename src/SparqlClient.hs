@@ -48,8 +48,9 @@ baseLookupEndpoint = "http://lookup.dbpedia.org/api/search/KeywordSearch?MaxHits
 xmlTags :: [String]
 xmlTags = ["Classes", "Class", "Label", "URI", "Categories", "Category"]
 
-dropXmlTagsAndZip :: String -> [(String, String)]
-dropXmlTagsAndZip a = fmap (\a -> case a of; [a,b]-> (a,b); _-> ("", "")) $ chunksOf 2 $ filter (`notElem` xmlTags) $ filter (not . isPrefixOf "/") $ filter (not . null) $ concat $ fmap (splitOn ">") $ splitOn "<" a
+dropXmlTagsAndZip :: [String] -> [(String, String)]
+dropXmlTagsAndZip [] = []
+dropXmlTagsAndZip (a:_) = foldl (\acc a -> case a of; [a,b]-> ((a,b):acc); _->acc) [] $ chunksOf 2 $ filter (`notElem` xmlTags) $ filter (not . isPrefixOf "/") $ filter (not . null) $ concat $ fmap (splitOn ">") $ splitOn "<" a
 
 lookupForName :: String -> IO LookupResult
 lookupForName name = do
@@ -58,14 +59,24 @@ lookupForName name = do
         desc    = getDescriptionFromLookup a
         classes = getClassesFromLookup a
         categories = getCategoriesForLookup a
-    return $ LookupResult name desc classes categories
+    return $ LookupResult name desc classes categories 
         
 getClassesFromLookup :: String -> Classes
-getClassesFromLookup lookupData = dropXmlTagsAndZip $ head $ dropWhile (\a -> not $ "<Classes>" `isPrefixOf` a) $ fmap trim $ lines lookupData
+getClassesFromLookup lookupData = dropXmlTagsAndZip $ take 1 $ dropWhile (\a -> not $ "<Classes>" `isPrefixOf` a) $ fmap trim $ lines lookupData
 
 getDescriptionFromLookup :: String -> Description
-getDescriptionFromLookup lookupData = dropTags $ head $ dropWhile (\a -> not $ "<Description>" `isPrefixOf` a) $ fmap trim $ lines lookupData
-    where dropTags str = head $ filter (not . null) $ splitOn "</Description>" $ concat $ filter (not . null) $ splitOn "<Description>" $ trim str
+getDescriptionFromLookup lookupData = dropTags $ take 1 $ dropWhile (\a -> not $ "<Description>" `isPrefixOf` a) $ fmap trim $ lines lookupData
+    where
+        dropTags []    = [] 
+        dropTags [str] = head $ filter (not . null) $ splitOn "</Description>" $ concat $ filter (not . null) $ splitOn "<Description>" $ trim str
 
 getCategoriesForLookup :: String -> Categories
-getCategoriesForLookup lookupData = dropXmlTagsAndZip $ head $ dropWhile (\a -> not $ "<Categories>" `isPrefixOf` a) $ fmap trim $ lines lookupData
+getCategoriesForLookup lookupData = dropXmlTagsAndZip $ take 1 $ dropWhile (\a -> not $ "<Categories>" `isPrefixOf` a) $ fmap trim $ lines lookupData
+
+
+lookupElems :: [String] -> IO [LookupResult]
+lookupElems [] = return []
+lookupElems (a:as) = (:) <$> lookupForName a <*> lookupElems as
+
+getFrequencyList :: [String] -> [(String, Int)]
+getFrequencyList list = sortBy (\(_,a) (_,b)->compare b a) $ fmap (\a-> (head a, length a)) $ group $ sort list
