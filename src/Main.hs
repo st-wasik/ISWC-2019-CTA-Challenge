@@ -8,6 +8,7 @@ import Text.Read
 import Data.Maybe
 
 import Data.Char
+import Text.Pretty.Simple
 
 main :: IO ()
 main = do
@@ -15,6 +16,12 @@ main = do
     let fileNames = sort . filter (not . null) $ columnValues 0 targetFileContent 
     dataFiles <- mapM readDataFile fileNames
     putStrLn . concat . intersperse "\n" $ fmap (unwords) . fmap (lineValues 0) $ dataFiles
+
+process :: IO [[String]]
+process = do
+    getTargets
+    >>= (\a-> return $ take 7 a)
+    >>= mapM processTarget
 
 getTargets :: IO [(String, Int)]
 getTargets = do
@@ -27,21 +34,25 @@ getTargets = do
             $ zip filenames columns
     return result
 
-processTarget :: (String, Int) -> IO ()
+columnValsLimit = 10
+
+processTarget :: (String, Int) -> IO [String]
 processTarget (filename, column) = do
     tableContent <- readDataFile filename
     let
-        colName = formatColumnName $ (lineValues 0 tableContent) !! column
-        colVals = columnValues column tableContent 
-    return ()
+        allVals = columnValues column tableContent 
+        colVals = take columnValsLimit $ drop 1 allVals
+        colName = head allVals
+    columnResult <- processColumnName colName
+    descriptionResult <- processColumnValues colVals
+    putStr $ "COLUMN: " ++ colName ++ "   VALUES: "
+    mapM_ (\a -> putStr $ a ++ "; ") colVals 
+    putStrLn ""
+    return $ if not . null $ columnResult 
+        then columnResult
+        else descriptionResult
+    >>= (\a-> pPrint a >> return a)
 
-formatColumnName :: String -> String
-formatColumnName name = 
-    fmap toLower 
-    . fmap (\a -> if a==' ' then '_' else a)
-    . trim
-    . fst
-    $ break (`elem` ['(', '?', '[']) name
 
 processColumnName :: String -> IO [String]
 processColumnName colName = do
@@ -75,7 +86,4 @@ getSuperClassesForFrequencyList limit freqList = do
     . fmap fst
     $ freqList
     where 
-        formatName = concat . fmap fstLetterUpper . words
-        fstLetterUpper [] = []
-        fstLetterUpper (x:xs) = (toUpper x : xs)
         isPrefixOfAny a = any (==True) $ fmap (`isPrefixOf` a) owlBaseClasses

@@ -92,7 +92,20 @@ lookupForName name = do
     return $ LookupResult name description classes categories
     
 formatName :: String -> String
-formatName = foldl (\acc a-> if a==' ' then acc ++ ['_'] else acc ++ [a]) [] . trim  
+formatName name = 
+    concat 
+    . fmap fstLetterUpper 
+    . words
+    . fmap toLower 
+    . fmap (\a -> if a==' ' then '_' else a)
+    . filter (/='\"')
+    . trim
+    . fst
+    . break (`elem` ['(', '?', '['])
+    $ filter (/='\"') name
+    where
+        fstLetterUpper [] = []
+        fstLetterUpper (x:xs) = (toUpper x : xs)
 
 getClassesFromLookup :: String -> Classes
 getClassesFromLookup lookupData = 
