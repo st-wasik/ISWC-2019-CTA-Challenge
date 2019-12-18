@@ -11,6 +11,9 @@ import qualified Network.HTTP as HTTP
 
 import Data.List.Split
 import Data.List
+import Data.Text.Internal (Text)
+
+import qualified Data.Map as Map
 
 import Data.Char
 
@@ -27,17 +30,30 @@ data LookupResult = LookupResult Name Description Classes Categories deriving (E
 trim :: String -> String
 trim x = let y = dropWhile (==' ') x in reverse $ dropWhile (==' ') (reverse y)
 
+textToString :: Text -> String
+textToString = read . show
+
 dbpediaEndpoint :: String
 dbpediaEndpoint = "http://dbpedia.org/sparql"
 
+dbpedia = "http://dbpedia.org"
+
 selectQuery :: String
 selectQuery = "select distinct ?Concept where {[] a ?Concept} LIMIT 100"
+
+getSuperClassSelectQuery :: String -> String
+getSuperClassSelectQuery className = 
+    "SELECT distinct ?superclass WHERE { dbo:" 
+    ++ className
+    ++ " rdfs:subClassOf* ?superclass. FILTER ( strstarts(str(?superclass), 'http://dbpedia.org/ontology/'))}" 
 
 sendExampleSelect :: IO (Response SelectResult)
 sendExampleSelect = sendQuery dbpediaEndpoint selectQuery
 
 sendQuery :: String -> String -> IO (Response SelectResult)
 sendQuery endpoint query = SPARQL.select endpoint (BSC8.pack query) 
+
+sendAskQuery endpoint query = SPARQL.ask endpoint (BSC8.pack query) 
 
 sendEither :: IO (Response SelectResult) -> IO (Either HttpException (Response SelectResult))
 sendEither request = try request
@@ -68,13 +84,16 @@ dropXmlTagsAndZipUnique (a:_) =
 
 lookupForName :: String -> IO LookupResult
 lookupForName name = do
-    res <- (HTTP.simpleHTTP . HTTP.getRequest $ baseLookupEndpoint ++ name) >>= HTTP.getResponseBody 
+    res <- (HTTP.simpleHTTP . HTTP.getRequest $ baseLookupEndpoint ++ (formatName name)) >>= HTTP.getResponseBody 
     let 
         description = getDescriptionFromLookup res
         classes     = getClassesFromLookup res
         categories  = getCategoriesForLookup res
-    return $ LookupResult name description classes categories 
-        
+    return $ LookupResult name description classes categories
+    
+formatName :: String -> String
+formatName = foldl (\acc a-> if a==' ' then acc ++ ['_'] else acc ++ [a]) [] . trim  
+
 getClassesFromLookup :: String -> Classes
 getClassesFromLookup lookupData = 
     dropXmlTagsAndZipUnique 
@@ -153,3 +172,22 @@ test = do
     putStrLn ""
     putStrLn $ (take 40 $ repeat '=') ++ "  CATEGORIES: " ++ (take 40 $ repeat '=')
     putStrLn . show $ take 10 $ getFrequencyList $ processCategories x
+
+getSuperClasses :: String -> IO [String]
+getSuperClasses [] = return []
+getSuperClasses className = do
+    sendQuery dbpediaEndpoint (getSuperClassSelectQuery $ formatName className)
+    >>= (\a-> return . getClasses $ responseBody a)
+    >>= (\b-> return $ if length b > 1 then b else [])
+        where 
+            getClasses (SPARQL.SelectResult x) = 
+                fmap textToString
+                . foldl' (\acc a -> 
+                    case a of
+                        (SPARQL.IRI a) -> (a:acc)
+                        _ -> acc
+                    ) []
+                . fmap snd 
+                . concat 
+                $ fmap Map.toAscList x
+
