@@ -84,25 +84,23 @@ dropXmlTagsAndZipUnique (a:_) =
 
 lookupForName :: String -> IO LookupResult
 lookupForName name = do
-    res <- (HTTP.simpleHTTP . HTTP.getRequest $ baseLookupEndpoint ++ (formatName name)) >>= HTTP.getResponseBody 
+    res <- (HTTP.simpleHTTP . HTTP.getRequest $ baseLookupEndpoint ++ (formatName True name)) >>= HTTP.getResponseBody 
     let 
         description = getDescriptionFromLookup res
         classes     = getClassesFromLookup res
         categories  = getCategoriesForLookup res
     return $ LookupResult name description classes categories
     
-formatName :: String -> String
-formatName name = 
+formatName :: Bool -> String -> String
+formatName forLookUp name = 
     concat 
     . fmap fstLetterUpper 
     . words
     . fmap toLower 
-    . fmap (\a -> if a==' ' then '_' else a)
-    . filter (/='\"')
+    . foldl (\acc a -> if forLookUp then (if a==' ' then acc ++ ['_'] else acc ++ [a]) else if a==' ' then acc else (acc ++ [a])) []
     . trim
     . fst
-    . break (`elem` ['(', '?', '['])
-    $ filter (/='\"') name
+    $ break (`elem` ['(', '?', '[']) name
     where
         fstLetterUpper [] = []
         fstLetterUpper (x:xs) = (toUpper x : xs)
@@ -189,7 +187,7 @@ test = do
 getSuperClasses :: String -> IO [String]
 getSuperClasses [] = return []
 getSuperClasses className = do
-    sendQuery dbpediaEndpoint (getSuperClassSelectQuery $ formatName className)
+    sendQuery dbpediaEndpoint (getSuperClassSelectQuery $ formatName False className)
     >>= (\a-> return . getClasses $ responseBody a)
     >>= (\b-> return $ if length b > 1 then b else [])
         where 

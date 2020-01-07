@@ -17,12 +17,14 @@ main = do
     dataFiles <- mapM readDataFile fileNames
     putStrLn . concat . intersperse "\n" $ fmap (unwords) . fmap (lineValues 0) $ dataFiles
 
+ -- | Begins processing targets. 
 process :: IO [[String]]
 process = do
     getTargets
-    >>= (\a-> return $ take 7 a)
+    >>= (\a-> return $ take 5 a)
     >>= mapM processTarget
 
+ -- | Returns list of targets read from target file. One target is pair: table name & column no.
 getTargets :: IO [(String, Int)]
 getTargets = do
     targetFileContent <- readFile "data/CTA_Round1_Targets.csv"
@@ -36,6 +38,9 @@ getTargets = do
 
 columnValsLimit = 10
 
+-- | Reads target column name & content. Sends query with column name to dbpedia. 
+--   If result is null, sends queries for first X values of column to dbpedia. 
+--   Shows resulting classes and superclasses on std out.
 processTarget :: (String, Int) -> IO [String]
 processTarget (filename, column) = do
     tableContent <- readDataFile filename
@@ -43,21 +48,32 @@ processTarget (filename, column) = do
         allVals = columnValues column tableContent 
         colVals = take columnValsLimit $ drop 1 allVals
         colName = head allVals
+
     columnResult <- processColumnName colName
     descriptionResult <- processColumnValues colVals
+
     putStr $ "COLUMN: " ++ colName ++ "   VALUES: "
     mapM_ (\a -> putStr $ a ++ "; ") colVals 
     putStrLn ""
     return $ if not . null $ columnResult 
         then columnResult
         else descriptionResult
-    >>= (\a-> pPrint a >> return a)
-
+    >>= \a-> (putStrLn $ "RESULT of " ++ filename ++ " " ++ (show column) ++ ": ") 
+    >> pPrint a 
+    >> return a
 
 processColumnName :: String -> IO [String]
 processColumnName colName = do
     return colName
     >>= getSuperClasses
+    >>= (\classes-> case classes of
+        [] -> return []
+        ok -> return $ ok)
+        
+lookupColName colName = do    
+    lookupResult  <- lookupElems [colName]
+    getSuperClassesForFrequencyList lookupResult topClassesCount . getFrequencyList $ processClasses lookupResult 
+    
 
 owlBaseClasses :: [String]
 owlBaseClasses = ["owl", "http"]
@@ -68,22 +84,28 @@ topDescriptionClassesCount = 3
 processColumnValues :: [String] -> IO [String]
 processColumnValues colVals = do 
     lookupResult  <- lookupElems colVals
-    superClasses  <- getSuperClassesForFrequencyList topClassesCount . getFrequencyList $ processClasses lookupResult 
-    superClasses' <- getSuperClassesForFrequencyList topDescriptionClassesCount . getFrequencyList $ processDescriptions lookupResult
+    superClasses  <- getSuperClassesForFrequencyList lookupResult topClassesCount . getFrequencyList $ processClasses lookupResult 
+    superClasses' <- getSuperClassesForFrequencyList lookupResult topDescriptionClassesCount . getFrequencyList $ processDescriptions lookupResult
     return $ case superClasses of
         [] -> case superClasses' of
             [] -> ["no_class"]
             ok -> ok
         ok -> ok
 
-getSuperClassesForFrequencyList :: Int -> [(String, Int)] -> IO [String]
-getSuperClassesForFrequencyList limit freqList = do
-    fmap (nub . concat)
+getSuperClassesForFrequencyList :: [LookupResult] -> Int -> [(String, Int)] -> IO [String]
+getSuperClassesForFrequencyList lookupData limit freqList = do
+    fmap nub
+    . fmap ((mapToDBPediaClasses baseClasses) ++)
+    . fmap (concat)
     . mapM getSuperClasses
-    . fmap formatName
-    . take limit
-    . filter (not . isPrefixOfAny)
-    . fmap fst
-    $ freqList
+    . fmap (formatName False)
+    $ baseClasses
     where 
         isPrefixOfAny a = any (==True) $ fmap (`isPrefixOf` a) owlBaseClasses
+        baseClasses = 
+            take limit
+            . filter (not . isPrefixOfAny)
+            . fmap fst
+            $ freqList 
+        mapToDBPediaClasses values = filter (not . isPrefixOf "http://schema.org/") $ foldl (\acc (LookupResult _ _ a _) -> acc ++ (foldlClasses a)) [] lookupData
+            where foldlClasses = foldl (\acc a -> if (fst a) `elem` values then (snd a):acc else acc ) []
