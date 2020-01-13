@@ -18,11 +18,14 @@ main = do
     putStrLn . concat . intersperse "\n" $ fmap (unwords) . fmap (lineValues 0) $ dataFiles
 
  -- | Begins processing targets. 
-process :: IO [[String]]
+--process :: IO [(String, Int, String)]
 process = do
     getTargets
-    >>= (\a-> return $ take 5 a)
+    >>= (\a-> return $ {-take 5 $ drop 5 $-} a)
     >>= mapM processTarget
+    >>= mapM (return . (\(a, b, c) -> show a ++ ", " ++ (show $ show b) ++ ", " ++ concat (intersperse " | " (fmap show c))))
+    >>= return . unlines 
+    >>= writeFile "CTA-Round1-result.csv"
 
  -- | Returns list of targets read from target file. One target is pair: table name & column no.
 getTargets :: IO [(String, Int)]
@@ -41,7 +44,7 @@ columnValsLimit = 10
 -- | Reads target column name & content. Sends query with column name to dbpedia. 
 --   If result is null, sends queries for first X values of column to dbpedia. 
 --   Shows resulting classes and superclasses on std out.
-processTarget :: (String, Int) -> IO [String]
+processTarget :: (String, Int) -> IO (String, Int, [String])
 processTarget (filename, column) = do
     tableContent <- readDataFile filename
     let
@@ -52,15 +55,16 @@ processTarget (filename, column) = do
     columnResult <- processColumnName colName
     descriptionResult <- processColumnValues colVals
 
-    putStr $ "COLUMN: " ++ colName ++ "   VALUES: "
+    putStr $ "COLUMN: " ++ colName ++ "\nVALUES: "
     mapM_ (\a -> putStr $ a ++ "; ") colVals 
     putStrLn ""
     return $ if not . null $ columnResult 
         then columnResult
         else descriptionResult
-    >>= \a-> (putStrLn $ "RESULT of " ++ filename ++ " " ++ (show column) ++ ": ") 
+    >>= return . filter (/="http://dbpedia.org/ontology/Agent") . filter (/="http://dbpedia.org/ontology/Thing")
+    >>= \a-> (putStrLn $ "RESULT for " ++ filename ++ " " ++ (show column) ++ ": ") 
     >> pPrint a 
-    >> return a
+    >> return (filename, column, a)
 
 processColumnName :: String -> IO [String]
 processColumnName colName = do
@@ -107,5 +111,6 @@ getSuperClassesForFrequencyList lookupData limit freqList = do
             . filter (not . isPrefixOfAny)
             . fmap fst
             $ freqList 
-        mapToDBPediaClasses values = filter (not . isPrefixOf "http://schema.org/") $ foldl (\acc (LookupResult _ _ a _) -> acc ++ (foldlClasses a)) [] lookupData
+        mapToDBPediaClasses values = filter (not . isPrefixOf "http://schema.org/") 
+            $ foldl (\acc (LookupResult _ _ a _) -> acc ++ (foldlClasses a)) [] lookupData
             where foldlClasses = foldl (\acc a -> if (fst a) `elem` values then (snd a):acc else acc ) []

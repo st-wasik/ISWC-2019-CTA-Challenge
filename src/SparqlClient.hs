@@ -187,6 +187,7 @@ test = do
 getSuperClasses :: String -> IO [String]
 getSuperClasses [] = return []
 getSuperClasses className = do
+
     sendQuery dbpediaEndpoint (getSuperClassSelectQuery $ formatName False className)
     >>= (\a-> return . getClasses $ responseBody a)
     >>= (\b-> return $ if length b > 1 then b else [])
@@ -201,4 +202,3 @@ getSuperClasses className = do
                 . fmap snd 
                 . concat 
                 $ fmap Map.toAscList x
-
