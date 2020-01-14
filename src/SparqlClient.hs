@@ -3,22 +3,17 @@ module SparqlClient where
 import qualified Database.SPARQL.Protocol.Client    as SPARQL
 import qualified Data.ByteString.Lazy.Char8         as BSC8
 import Text.Pretty.Simple -- pPrint
-
 import Control.Exception
 import Network.HTTP.Conduit
 import Network.HTTP.Client
 import qualified Network.HTTP as HTTP
-
 import Data.List.Split
 import Data.List
 import Data.Text.Internal (Text)
-
 import qualified Data.Map as Map
-
 import Data.Char
 
 type SelectResult = SPARQL.SelectResult
-
 
 type Description = String
 type Classes = [(String, String)]
@@ -33,10 +28,9 @@ trim x = let y = dropWhile (==' ') x in reverse $ dropWhile (==' ') (reverse y)
 textToString :: Text -> String
 textToString = read . show
 
-dbpediaEndpoint :: String
-dbpediaEndpoint = "http://dbpedia.org/sparql"
+dbpediaEndpoint = "http://dbpedia.org/sparql" :: String
 
-dbpedia = "http://dbpedia.org"
+dbpedia = "http://dbpedia.org" :: String
 
 selectQuery :: String
 selectQuery = "select distinct ?Concept where {[] a ?Concept} LIMIT 100"
@@ -55,10 +49,8 @@ sendQuery endpoint query = SPARQL.select endpoint (BSC8.pack query)
 
 sendAskQuery endpoint query = SPARQL.ask endpoint (BSC8.pack query) 
 
-sendEither :: IO (Response SelectResult) -> IO (Either HttpException (Response SelectResult))
-sendEither request = try request
-
-
+catchHTTPException :: IO (Response SelectResult) -> IO (Either HttpException (Response SelectResult))
+catchHTTPException request = try request
 
 baseLookupEndpoint :: String
 baseLookupEndpoint = "http://lookup.dbpedia.org/api/search/KeywordSearch?MaxHits=1&QueryString="
@@ -97,7 +89,13 @@ formatName forLookUp name =
     . fmap fstLetterUpper 
     . words
     . fmap toLower 
-    . foldl (\acc a -> if forLookUp then (if a==' ' then acc ++ ['_'] else acc ++ [a]) else if a==' ' then acc else (acc ++ [a])) []
+    . foldl (\acc a -> if forLookUp 
+        then (if a==' ' 
+            then acc ++ ['_'] 
+            else acc ++ [a]) 
+        else if a==' ' 
+            then acc 
+            else (acc ++ [a])) []
     . trim
     . fst
     $ break (`elem` ['(', '?', '[']) name
@@ -138,7 +136,6 @@ getCategoriesForLookup lookupData =
     . fmap trim 
     $ lines lookupData
 
-
 lookupElems :: [String] -> IO [LookupResult]
 lookupElems [] = return []
 lookupElems (a:as) = (:) <$> lookupForName a <*> lookupElems as
@@ -170,6 +167,8 @@ processCategories = foldl (\acc (LookupResult _ _ _ categories) -> ((fmap fst ca
 removeStopWords :: [String] -> [String] -> [String]
 removeStopWords stopwords = foldl (\acc a -> if a `notElem` stopwords then (a:acc) else acc) []
 
+-- | Used to test algorithm elements only. 
+test :: IO ()
 test = do
     stopWords <- fmap words $ readFile "data/stopwords.txt"
     testVals <- fmap words $ readFile "data/testVals.txt"
@@ -187,7 +186,6 @@ test = do
 getSuperClasses :: String -> IO [String]
 getSuperClasses [] = return []
 getSuperClasses className = do
-
     sendQuery dbpediaEndpoint (getSuperClassSelectQuery $ formatName False className)
     >>= (\a-> return . getClasses $ responseBody a)
     >>= (\b-> return $ if length b > 1 then b else [])

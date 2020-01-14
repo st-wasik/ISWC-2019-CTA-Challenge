@@ -10,6 +10,7 @@ import Data.Maybe
 import Data.Char
 import Text.Pretty.Simple
 
+-- | Lists targets only (!). To process targets use 'process' function.
 main :: IO ()
 main = do
     targetFileContent <- readFile "data/CTA_Round1_Targets.csv"
@@ -17,11 +18,10 @@ main = do
     dataFiles <- mapM readDataFile fileNames
     putStrLn . concat . intersperse "\n" $ fmap (unwords) . fmap (lineValues 0) $ dataFiles
 
- -- | Begins processing targets. 
---process :: IO [(String, Int, String)]
+ -- | Begins processing targets. Writes results to file.
+process :: IO ()
 process = do
     getTargets
-    >>= (\a-> return $ {-take 5 $ drop 5 $-} a)
     >>= mapM processTarget
     >>= mapM (return . (\(a, b, c) -> show a ++ ", " ++ (show $ show b) ++ ", " ++ concat (intersperse " | " (fmap show c))))
     >>= return . unlines 
@@ -39,7 +39,7 @@ getTargets = do
             $ zip filenames columns
     return result
 
-columnValsLimit = 10
+columnValsLimit = 10 :: Int
 
 -- | Reads target column name & content. Sends query with column name to dbpedia. 
 --   If result is null, sends queries for first X values of column to dbpedia. 
@@ -63,7 +63,8 @@ processTarget (filename, column) = do
         else descriptionResult
     >>= return . filter (/="http://dbpedia.org/ontology/Agent") . filter (/="http://dbpedia.org/ontology/Thing")
     >>= \a-> (putStrLn $ "RESULT for " ++ filename ++ " " ++ (show column) ++ ": ") 
-    >> pPrint a 
+    >> pPrint a
+    >> putStrLn "" 
     >> return (filename, column, a)
 
 processColumnName :: String -> IO [String]
@@ -73,17 +74,10 @@ processColumnName colName = do
     >>= (\classes-> case classes of
         [] -> return []
         ok -> return $ ok)
-        
-lookupColName colName = do    
-    lookupResult  <- lookupElems [colName]
-    getSuperClassesForFrequencyList lookupResult topClassesCount . getFrequencyList $ processClasses lookupResult 
-    
 
-owlBaseClasses :: [String]
-owlBaseClasses = ["owl", "http"]
-
-topClassesCount = 5
-topDescriptionClassesCount = 3
+owlBaseClasses = ["owl", "http"] :: [String]
+topClassesCount = 5 :: Int 
+topDescriptionClassesCount = 3 :: Int
 
 processColumnValues :: [String] -> IO [String]
 processColumnValues colVals = do 
@@ -93,8 +87,8 @@ processColumnValues colVals = do
     return $ case superClasses of
         [] -> case superClasses' of
             [] -> ["no_class"]
-            ok -> ok
-        ok -> ok
+            _ -> superClasses'
+        _ -> superClasses
 
 getSuperClassesForFrequencyList :: [LookupResult] -> Int -> [(String, Int)] -> IO [String]
 getSuperClassesForFrequencyList lookupData limit freqList = do
